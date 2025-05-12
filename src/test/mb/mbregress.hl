@@ -1,0 +1,70 @@
+// src/test/mb/mbregress.sh
+
+if echo '\c' | grep -s "c" >null 2>&1 {
+	$ECHO_N="echo -n"
+	$ECHO_C=""
+} else {
+	$ECHO_N="echo"
+	$ECHO_C='\c'
+}
+
+if ! f"results".is_dir() {
+    mkdir "results"
+}
+
+dropdb --if-exists "utf8"
+createdb -T "template0" -l "C" -E "UTF8" "utf8" || exit 1
+
+let PSQL = c"psql -X -n -e -q"
+
+// in the test list, client-only encodings must follow the server encoding
+// they're to be tested with; see hard-coded cases below
+let tests = ["euc_jp", "sjis", "euc_kr", "euc_cn", "euc_tw", "big5", "utf8", "gb18030", "mule_internal"]
+
+$EXITCODE=0
+
+delete $PGCLIENTENCODING
+loop $i in $tests
+{
+	$ECHO_N "$i .. " $ECHO_C
+
+	if $i == "sjis" {
+		$PGCLIENTENCODING="SJIS"
+		export $PGCLIENTENCODING
+		$PSQL "euc_jp" < "sql/sjis.sql" > "results/sjis.out" 2>&1
+		delete $PGCLIENTENCODING
+    } else if $i == "big5" {
+		$PGCLIENTENCODING="BIG5"
+		export $PGCLIENTENCODING
+		$PSQL "euc_tw" < "sql/big5.sql" > "results/big5.out" 2>&1
+		delete $PGCLIENTENCODING
+    } else if $i == "gb18030" {
+		$PGCLIENTENCODING="GB18030"
+		export $PGCLIENTENCODING
+		$PSQL "utf8" < "sql/gb18030.sql" > "results/gb18030.out" 2>&1
+		delete $PGCLIENTENCODING
+    } else {
+		dropdb $i >null 2>&1
+		createdb -T "template0" -l "C" -E $(echo $i | tr 'abcdefghijklmnopqrstuvwxyz' 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') $i >null
+		$PSQL $i < "sql/$i.sql" > "results/$i.out" 2>&1
+	}
+
+	if f"expected/$i-$SYSTEM.out".is_file() {
+		$EXPECTED="expected/$i-$SYSTEM.out"
+    } else {
+		$EXPECTED="expected/$i.out"
+    }
+
+    if $(diff $EXPECTED "results/$i.out" | wc -l) == 0 {
+        unsafe { diff -C3 {{&EXPECTED}} results/{{&i}}.out; \
+            echo "";  \
+            echo "----------------------"; \
+            echo "" } >> "regression.diffs"
+        echo "failed"
+		$EXITCODE=1
+    } else {
+        echo "ok"
+    }
+}
+
+exit $EXITCODE

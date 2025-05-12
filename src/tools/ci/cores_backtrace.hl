@@ -1,0 +1,54 @@
+if #args != 2 {
+    echo "cores_backtrace.sh <os> <directory>"
+    exit 1
+}
+
+let os = $args[1]
+let directory = $args[2]
+
+match $os {
+    "freebsd", "linux", "macos", "netbsd", "openbsd" => {},
+    _ => {
+        echo "unsupported operating system $os"
+        exit 1
+    }
+}
+
+let first=1
+loop $corefile in $(find $directory --type "f") {
+    if $first == 1 {
+        $first = 0
+    } else {
+        // to make it easier to separate the different crash reports
+        echo -e '\n\n'
+    }
+
+    if  $os == 'macos'  || $os == 'openbsd' {
+        lldb -c $corefile --batch -o 'thread backtrace all' -o 'quit'
+    }
+    else {
+        try {
+            $auxv := $(gdb --quiet --core ${corefile} --batch -ex 'info auxv' $stderr>null)
+        } catch (e: Error) {
+            echo "could not process $corefile"
+            continue
+        }
+
+        if $os == 'freebsd' {
+            $binary=$(echo $auxv | grep "AT_EXECPATH" | perl -pe "s/^.*\"(.*)\"\$/\$1/g")
+        }
+        else if $os == 'netbsd' {
+            $binary=$(echo $auxv | grep "AT_SUN_EXECNAME" | perl -pe "s/^.*\"(.*)\"\$/\$1/g")
+        }
+        else if $os == 'linux' {
+            $binary=$(echo $auxv | grep "AT_EXECFN" | perl -pe "s/^.*\"(.*)\"\$/\$1/g")
+        }
+        else {
+            echo 'should not get here'
+            exit 1
+        }
+
+        echo "dumping ${corefile} for ${binary}"
+        gdb --batch --quiet -ex "thread apply all bt full" -ex "quit" $binary $corefile $stderr>null
+    }
+}
