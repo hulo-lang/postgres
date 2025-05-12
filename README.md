@@ -14,9 +14,8 @@ English | [简体中文](docs/README_CN.md)
 
 ## 🚀 Getting Started
 
-::: warning
-This project is in an early stage and may have incomplete functionality, performance issues, or compatibility problems. It is not recommended for production use.
-:::
+> [!WARNING]
+> This project is in an early stage and may have incomplete functionality, performance issues, or compatibility problems. It is not recommended for production use.
 
 ### Clone and Build
 
